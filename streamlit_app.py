@@ -246,26 +246,29 @@ if st.session_state.image:
             features = []
             for det in st.session_state.detections:
                 if det["class_id"] in st.session_state.selected_classes:
-                    features.append({
-                        "type": "Feature",
-                        "geometry": {
-                            "type": "Polygon",
-                            "coordinates": [[
-                                [det["x1"], det["y1"]],
-                                [det["x1"], det["y2"]],
-                                [det["x2"], det["y2"]],
-                                [det["x2"], det["y1"]],
-                                [det["x1"], det["y1"]]
-                            ]]
-                        },
-                        "properties": {
-                            "classification": {"name": CLASS_INFO[det["class_id"]]["name"]},
-                            "confidence": float(det["conf"]),
-                        }
-                    })
-            
-            geojson = {"type": "FeatureCollection", "features": features}
-            geojson_str = json.dumps(geojson, indent=2)
+                    features = []
+for det in st.session_state.detections:
+    if det["class_id"] in st.session_state.selected_classes:
+        features.append({
+            "type": "Feature",
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[
+                    [float(det["x1"]), float(det["y1"])],
+                    [float(det["x1"]), float(det["y2"])],
+                    [float(det["x2"]), float(det["y2"])],
+                    [float(det["x2"]), float(det["y1"])],
+                    [float(det["x1"]), float(det["y1"])]
+                ]]
+            },
+            "properties": {
+                "classification": {"name": CLASS_INFO[det["class_id"]]["name"]},
+                "confidence": float(det["conf"]),
+            }
+        })
+
+geojson = {"type": "FeatureCollection", "features": features}
+geojson_str = json.dumps(geojson, indent=2)
             
             st.download_button(
                 label="📍 Download GeoJSON",
