@@ -5,11 +5,9 @@ from pathlib import Path
 import gdown
 import onnxruntime as rt
 
-# Config
 st.set_page_config(page_title="Testised v2", page_icon="🔬", layout="wide")
 st.title("🔬 Testised - Testis Cell Detector")
 
-# Class definitions
 CLASSES = {
     0: {"name": "Spermatogonia", "color": (30, 144, 255)},
     1: {"name": "Primary spermatocyte", "color": (199, 21, 133)},
@@ -19,7 +17,6 @@ CLASSES = {
     5: {"name": "Garbage", "color": (148, 163, 184)},
 }
 
-# Load ONNX model
 @st.cache_resource
 def load_model():
     try:
@@ -38,7 +35,6 @@ def load_model():
 
 session = load_model()
 
-# UI
 col1, col2 = st.columns([2, 1])
 
 with col1:
@@ -70,46 +66,57 @@ if uploaded and session:
         output_names = [o.name for o in session.get_outputs()]
         outputs = session.run(output_names, {input_name: img_array})
         
-        # Parse YOLO output (raw: [1, 25200, 85] -> batch, proposals, 4+80classes+1confidence)
+        # Parse YOLO output
         predictions = outputs[0][0]  # [25200, 85]
         detections = []
         
         for pred in predictions:
-            x_center, y_center, w_box, h_box = pred[:4]
-            conf_scores = pred[4:5]  # objectness
-            class_scores = pred[5:]  # 80 classes (COCO), use argmax for simplicity
-            
-            conf_val = float(conf_scores[0])
+            conf_val = float(pred[4])
             if conf_val < conf:
                 continue
             
-            # Get class (map to testis classes 0-5)
-            class_idx = np.argmax(class_scores) % 6
+            # Get class
+            class_scores = pred[5:]
+            class_idx = int(np.argmax(class_scores)) % 6
             
-            # Convert to pixel coordinates
-            x1 = (x_center - w_box/2 - x_off) * (image.width / w)
-            y1 = (y_center - h_box/2 - y_off) * (image.height / h)
-            x2 = (x_center + w_box/2 - x_off) * (image.width / w)
-            y2 = (y_center + h_box/2 - y_off) * (image.height / h)
+            # YOLO format: x_center, y_center, width, height (normalized 0-1)
+            x_center, y_center, box_w, box_h = pred[:4]
             
-            detections.append({
-                "class": class_idx,
-                "x1": max(0, x1), "y1": max(0, y1),
-                "x2": min(image.width, x2), "y2": min(image.height, y2),
-                "conf": conf_val
-            })
+            # Convert to pixel coords in 1024 image
+            x1_img = (x_center - box_w/2) * 1024
+            y1_img = (y_center - box_h/2) * 1024
+            x2_img = (x_center + box_w/2) * 1024
+            y2_img = (y_center + box_h/2) * 1024
+            
+            # Remove offset and scale to original image
+            if w > 0 and h > 0:
+                x1 = max(0, (x1_img - x_off) * (image.width / w))
+                y1 = max(0, (y1_img - y_off) * (image.height / h))
+                x2 = min(image.width, (x2_img - x_off) * (image.width / w))
+                y2 = min(image.height, (y2_img - y_off) * (image.height / h))
+                
+                # Ensure x1 < x2, y1 < y2
+                if x1 > x2:
+                    x1, x2 = x2, x1
+                if y1 > y2:
+                    y1, y2 = y2, y1
+                
+                if x2 - x1 > 5 and y2 - y1 > 5:  # minimum box size
+                    detections.append({
+                        "class": class_idx,
+                        "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                        "conf": conf_val
+                    })
         
         # Draw
         img_out = image.copy()
         draw = ImageDraw.Draw(img_out)
         for d in detections:
             color = CLASSES[d["class"]]["color"]
-            x1 = max(0, min(int(d["x1"]), image.width))
-            y1 = max(0, min(int(d["y1"]), image.height))
-            x2 = max(0, min(int(d["x2"]), image.width))
-            y2 = max(0, min(int(d["y2"]), image.height))
+            x1, y1 = int(d["x1"]), int(d["y1"])
+            x2, y2 = int(d["x2"]), int(d["y2"])
             
-            if x1 < x2 and y1 < y2:  # valid box
+            if x1 < x2 and y1 < y2:
                 draw.rectangle([x1, y1, x2, y2], outline=color, width=2)
         
         col1, col2 = st.columns([2, 1])
@@ -122,4 +129,5 @@ if uploaded and session:
                 cls = d["class"]
                 counts[cls] = counts.get(cls, 0) + 1
             for cls_id in sorted(counts.keys()):
-                st.write(f"**{CLASSES[cls_id]['name']}:** {counts[cls_id]}")
+                if cls_id in counts:
+                    st.write(f"**{CLASSES[cls_id]['name']}:** {counts[cls_id]}")
