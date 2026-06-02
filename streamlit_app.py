@@ -104,8 +104,13 @@ if uploaded and session:
         draw = ImageDraw.Draw(img_out)
         for d in detections:
             color = CLASSES[d["class"]]["color"]
-            x1, y1, x2, y2 = int(d["x1"]), int(d["y1"]), int(d["x2"]), int(d["y2"])
-            draw.rectangle([x1, y1, x2, y2], outline=color, width=2)
+            x1 = max(0, min(int(d["x1"]), image.width))
+            y1 = max(0, min(int(d["y1"]), image.height))
+            x2 = max(0, min(int(d["x2"]), image.width))
+            y2 = max(0, min(int(d["y2"]), image.height))
+            
+            if x1 < x2 and y1 < y2:  # valid box
+                draw.rectangle([x1, y1, x2, y2], outline=color, width=2)
         
         col1, col2 = st.columns([2, 1])
         with col1:
@@ -118,4 +123,3 @@ if uploaded and session:
                 counts[cls] = counts.get(cls, 0) + 1
             for cls_id in sorted(counts.keys()):
                 st.write(f"**{CLASSES[cls_id]['name']}:** {counts[cls_id]}")
-
